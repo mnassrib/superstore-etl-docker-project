@@ -1,0 +1,64 @@
+services:
+  data-cleaner:
+    build: ./cleaner
+    image: data-cleaner
+    container_name: data-cleaner
+    volumes:
+      - ./mysql/data:/data # Montez le répertoire où se trouve le CSV
+    environment:
+      - INPUT_FILE=/data/SuperStoreRawData.csv
+      - OUTPUT_FILE=/data/CleanedSuperStoreData.csv
+    networks:
+      - etl_network
+
+  mysql:
+    image: mysql:latest
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    command: --secure-file-priv=/var/lib/mysql_files
+    volumes:
+      - mysql_data:/var/lib/mysql # Stockage persistant des données MySQL
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql # Script d'initialisation des tables
+      - ./mysql/data:/var/lib/mysql_files # Répertoire pour le fichier CSV
+    depends_on:
+      - data-cleaner # S'assurer que le service data-cleaner est démarré avant
+    networks:
+      - etl_network
+
+  adminer:
+    image: adminer
+    container_name: adminer
+    depends_on:
+      - mysql
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+    ports:
+      - "8080:8080" # Exposition du port Adminer pour la gestion de la base de données
+    networks:
+      - etl_network
+
+  jupyter:
+    build: ./jupyter
+    image: jupyter
+    container_name: jupyter
+    depends_on:
+      - mysql
+    volumes:
+      - ./notebooks:/home/jovyan/work # Montage des notebooks Jupyter
+    ports:
+      - "8887:8888" # Exposition du port Jupyter
+    environment:
+      MYSQL_HOST: ${MYSQL_HOST}
+      SUPERSTORE_MYSQL_DATABASE: ${SUPERSTORE_MYSQL_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}  
+      JUPYTER_ENABLE_LAB: "yes"
+    command: start-notebook.sh --NotebookApp.token=''
+    networks:
+      - etl_network
+
+volumes:
+  mysql_data: # Définition du volume pour le stockage persistant des données MySQL
+
+networks:
+  etl_network:
